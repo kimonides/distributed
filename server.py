@@ -1,6 +1,10 @@
 import hashlib
 import asyncio
 import threading
+from uuid import uuid4
+from uuid import UUID
+
+ringSize = 10
 
 
 class Server:
@@ -9,48 +13,46 @@ class Server:
         self.port = port
         self.node = node
         self.hash = hashlib.sha1(("%s:%s" % (self.ip, self.port)).encode('ASCII')).hexdigest()
-        self.id = int(self.hash, 16) % 5
+        self.id = int(self.hash, 16) % ringSize
+        self.requestsTable = {}
+        self.event = asyncio.Event()
+
         print('Starting to listen')
         self.listen()
 
-    def join(self, ip, port) -> None:
-        print('Join %s %s' % (ip,port))
-        joinID = int(hashlib.sha1(("%s:%s" % (ip, port)).encode('ASCII')).hexdigest(), 16) % 5
-        print('Join id is %s' % joinID)
-        if(self.node.id < joinID < self.node.next.id or self.node.next is self.node):
-            oldNextIP = self.node.next.ip
-            oldNextPort = self.node.next.port
-            self.node.setNext(ip,port)
-            self.node.next.connection.send('next:%s,%s|' % (oldNextIP, oldNextPort))
-            self.node.next.connection.send('prev:%s,%s' % (self.ip, self.port))
-        else:
-            self.node.next.connection.send('join:%s,%s' % (ip, port))
+    def isResponseNode(self,request):
+        return request.split('\n')[1] == self.ip and request.split('\n')[2] == self.port
 
-    def depart(self,departID) -> None:
-        if( departID == self.node.id ):
-            self.node.previous.connection('next:%s,%s|' % (self.node.next.ip,self.node.next.port))
-            self.node.next.connection('prev:%s,%s' % (self.node.next.ip,self.node.next.port))
-        else:
-            self.node.next.connection('depart:%s',departID)
-
-    def handle_request(self, requests) -> None:
+    def handle_request(self, requests):
+        response = None
         for request in requests.split('|'):
             command = request.split(':')[0]
-            if(command == 'join'):
-                ip = request.split(':')[1].split(',')[0]
-                port = request.split(':')[1].split(',')[1]
-                self.join(ip, port)
-            elif(command == 'next'):
-                ip = request.split(':')[1].split(',')[0]
-                port = request.split(':')[1].split(',')[1]
-                self.node.setNext(ip, port)
+            if(command == 'next'):
+                self.node.setNext(request.split(':')[1].split(',')[0],request.split(':')[1].split(',')[1])
             elif(command == 'prev'):
-                ip = request.split(':')[1].split(',')[0]
-                port = request.split(':')[1].split(',')[1]
-                self.node.setPrevious(ip, port)
-            elif(command == 'depart'):
-                departID = request.split(':')[1]
-                self.depart(departID)
+                self.node.setPrevious(request.split(':')[1].split(',')[0],request.split(':')[1].split(',')[1])
+            else:
+                if(command == 'join'):
+                    response = self.node.join(request)
+                elif(command == 'depart'):
+                    response = self.node.depart(request)
+                elif(command == 'insert'):
+                    response = self.node.insert(request)
+                elif(command == 'ping'):
+                    self.node.ping()
+                elif(command == 'delete'):
+                    response = self.node.delete(request)
+                elif(command == 'query'):
+                    response = self.node.query(request)
+                elif(request.split('=')[0] == 'response'):
+                    # TODO
+                    pass
+                # if(self.isResponseNode(request) and response == None):
+                #     response = uuid4()
+        return response
+
+
+
 
     def listen(self) -> None:
         async def handle_client(reader, writer):
@@ -58,11 +60,15 @@ class Server:
             message = data.decode()
             addr = writer.get_extra_info('peername')
             print("Received %r from %r" % (message, addr))
-            self.handle_request(message)
-            print("Send: %r" % message)
-            writer.write(data)
+            response = self.handle_request(message)
+            if(isinstance(response,UUID)):
+                print('Waiting for response for request id %s' % response)
+                asyncio.sleep('100')
+            elif(response is not None):
+                writer.write(response.encode())
+            #Somewhere here it should do asyncio.event.wait() until we get the data it needs only
+            #if this node is the responseNode
             await writer.drain()
-
             print("Close the client socket")
             writer.close()
 
@@ -70,3 +76,11 @@ class Server:
         loop = asyncio.get_event_loop()
         loop.create_task(asyncio.start_server(handle_client, self.ip, self.port))
         loop.run_forever()
+
+
+#   responses
+#   response: requestID,result
+#
+#   requests
+#   insert:key,value\nResponseNodeIP\nResponseNodePort\nrequestID
+#   

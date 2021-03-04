@@ -9,10 +9,6 @@ class Remote:
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.connect((ip,port))
 
-    # async def open_connection(self) -> None:
-    #     self.reader, self.writer = await asyncio.open_connection(self.ip, self.port,loop=self.loop)
-    #     # self.reader, self.writer = await asyncio.open_connection(self.ip, self.port,loop=self.loop)
-
     def close_connection(self) -> None:
         self.socket.close()
 

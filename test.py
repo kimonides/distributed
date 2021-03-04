@@ -1,14 +1,23 @@
 from remote import Remote
 
 
-ip = input('IP: ')
+# ip = input('IP: ')
 
-conn = Remote(ip)
+#   responses
+#   response: requestID,result
+#
+#   requests
+#   insert:key,value\nResponseNodeIP\nResponseNodePort\nrequestID
+#   
 
+conn = Remote('192.168.1.5',42069)
 msg = input('Message to send:\n')
+# msg = 'join:192.168.1.1,42069\n192.168.1.5\n42069'
+msg = msg + '\n192.168.1.5\n42069'
+print(repr('Sending %s' % msg))
 conn.send(msg)
 conn.receive()
-
+conn.close_connection()
 
 
 
