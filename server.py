@@ -44,14 +44,18 @@ class Server:
                     response = self.node.delete(request)
                 elif(command == 'query'):
                     response = self.node.query(request)
-                elif(request.split('=')[0] == 'response'):
-                    # TODO
-                    pass
+                elif(request.split(':')[0] == 'response'):
+                    self.requestsTable[request.split(':')[1].split(',')[0]] = request.split(':')[1].split(',')[1]
+                    for k in self.requestsTable:
+                        print(k)
+                    print('Setting Event')
+                    self.event.set()
+                    # self.event.clear()
                 # if(self.isResponseNode(request) and response == None):
                 #     response = uuid4()
         return response
 
-
+    ## TODO MAKE EVENT WAIT FOR RESPONSES
 
 
     def listen(self) -> None:
@@ -63,7 +67,14 @@ class Server:
             response = self.handle_request(message)
             if(isinstance(response,UUID)):
                 print('Waiting for response for request id %s' % response)
-                asyncio.sleep('100')
+                while True:
+                    # print('Started waiting!')
+                    self.event.wait()
+                    # print('unblocked!!!')
+                    if response in self.requestsTable:
+                        response = self.requestsTable[response]
+                        writer.writer(response.encode())
+                        break
             elif(response is not None):
                 writer.write(response.encode())
             #Somewhere here it should do asyncio.event.wait() until we get the data it needs only
