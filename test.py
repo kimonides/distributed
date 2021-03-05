@@ -1,24 +1,18 @@
-from remote import Remote
+import socket
 
 
-# ip = input('IP: ')
-
-#   responses
-#   response: requestID,result
-#
-#   requests
-#   insert:key,value\nResponseNodeIP\nResponseNodePort\nrequestID
-#   
-
-conn = Remote('192.168.1.5',42069)
+ip = input('IP: ')
 msg = input('Message to send:\n')
-# msg = 'join:192.168.1.1,42069\n192.168.1.5\n42069'
-if(msg != 'ping'):
-    msg = msg + '\n192.168.1.5\n42069'
+msg = msg + '\n192.168.1.5\n42069'
 print(repr('Sending %s' % msg))
-conn.send(msg)
-conn.receive()
-conn.close_connection()
+
+port = 42069
+socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+socket.connect((ip,port))
+socket.sendall(msg.encode())
+print('Received %s' % socket.recv(1023).decode())
+
+
 
 
 

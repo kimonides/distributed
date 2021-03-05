@@ -41,13 +41,13 @@ class Server:
                 elif(command == 'insert'):
                     response = self.node.insert(request)
                 elif(command == 'ping'):
-                    self.node.ping()
+                    response = self.node.ping(request)
                 elif(command == 'delete'):
                     response = self.node.delete(request)
                 elif(command == 'query'):
                     response = self.node.query(request)
                 elif(request.split(':')[0] == 'response'):
-                    self.requestsTable[request.split(':')[1].split(',')[0]] = request.split(':')[1].split(',')[1]
+                    self.requestsTable[request.split(':')[1].split(',')[0]] = ','.join(request.split(':')[1].split(',')[1:])
                     self.event.set()
                     self.event.clear()
         return response

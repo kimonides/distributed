@@ -6,16 +6,9 @@ class Remote:
     def __init__(self, ip, port=42069) -> None:
         self.ip = ip
         self.port = port
-        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
-    def open_connection(self) -> None:
-        self.socket.connect((self.ip,self.port))
-
-    def close_connection(self) -> None:
-        self.socket.close()
-
+        
     def send(self, msg) -> None:
-        self.socket.sendall(msg.encode())
-
-    def receive(self) -> None:
-        print('Received %s' % self.socket.recv(255).decode())
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.connect((self.ip,self.port))
+        s.sendall(msg.encode())
+        s.close()

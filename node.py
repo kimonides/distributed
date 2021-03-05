@@ -8,6 +8,7 @@ import struct
 from uuid import uuid4
 
 masterIP = '192.168.1.5'
+masterPort = 42096
 ringSize = 10
 
 
@@ -34,12 +35,23 @@ class Node:
         if(self.ip == get_ip_address('eth1')):
             self.server = Server(self.ip, self)
 
+    def joinRing(self) -> None:
+        msg = 'join:%s,%s\n%s\n%s' % (self.ip, self.port,masterIP, masterPort)
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        print('(%s,%s)' % (masterIP,masterPort))
+        s.connect((masterIP,masterPort))
+        s.sendall(msg.encode())
+        s.close()
+        print('Received %s' % s.recv(1023).decode())
+        print('Joined ring')
+        s.close()
+
     def sendToNext(self,request):
         requestID = None
         if(len(request.split('\n'))<4):
             requestID = uuid4()
             request+='\n%s' % requestID
-        print('Sending %s to %s' % (request,self.next.ip))
+        print('Sending %s to %s' % (repr(request),self.next.ip))
         self.next.connection.send(request)
         return requestID
 
@@ -48,7 +60,7 @@ class Node:
         if(len(request.split('\n'))<4):
             requestID = uuid4()
             request+='\n%s' % requestID
-        print('Sending %s to %s' % (request,self.next.ip))
+        print('Sending %s to %s' % (repr(request),self.previous.ip))
         self.previous.connection.send(request)
         return requestID
     
@@ -81,17 +93,10 @@ class Node:
         requestID = request.split('\n')[3]
         conn = Remote(responseNodeIP,responseNodePort)
         conn.send('response:%s,%s' % (requestID,response))
-        conn.close_connection()
         return None
 
     def hash(self,key):
         return int(hashlib.sha1((key).encode()).hexdigest(), 16) % ringSize
-
-    def joinRing(self) -> None:
-        conn = Remote(masterIP)
-        msg = 'join:%s,%s' % (self.ip, self.port)
-        conn.send(msg)
-        conn.close_connection()
 
     def isResponsible(self, id) -> bool:
         rv = False
@@ -107,6 +112,7 @@ class Node:
         requestData = self.parseRequest(request)
         if(self.isResponsible(self.hash(requestData['key']))):
             self.data[requestData['key']] = requestData['value']
+            print("I'm responsible for insert:%s,%s with hash key %s" % (requestData['value'],requestData['key'],self.hash(requestData['key'])))
             return self.sendResponse(request,'OK')
         else:
             print("I'm not responsible for id %s send to previous with ip %s" % (self.hash(requestData['key']),self.previous.ip))
@@ -165,15 +171,11 @@ class Node:
             return self.sendToNext(request)
 
     def setNext(self, ip, port=42069) -> None:
-        if(self.next is not self):
-            self.next.connection.close_connection()
         self.next = Node(ip, port)
         self.next.connection = Remote(self.next.ip, self.next.port)
         print('Added %s as next' % ip)
 
     def setPrevious(self, ip, port=42069) -> None:
-        if(self.previous is not self):
-            self.previous.connection.close_connection()
         self.previous = Node(ip, port)
         self.previous.connection = Remote(self.previous.ip, self.previous.port)
         print('Added %s as previous' % ip)
@@ -181,13 +183,17 @@ class Node:
     def __str__(self) -> None:
         return "(%s,%s,%s)-->" % (self.ip, self.port, self.id)
 
-    def ping(self) -> None:
-        print(str(self))
-        if(self.next.ip != masterIP):
-            self.next.connection.send('ping')
+    def ping(self,request) -> None:
+        if(self.next.ip == masterIP):
+            response = request.split('\n')[0].split(":")[1] + str(self).split('-->')[0]
+            return self.sendResponse(request,response)
+        else:
+            request = request.split('\n')[0]+str(self) + '\n' + '\n'.join(request.split('\n')[1:])
+            return self.sendToNext(request)
 
 
 if __name__ == "__main__":
     ip = get_ip_address('eth1')
     print('My ip is %s' % ip)
     node = Node(ip)
+
