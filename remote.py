@@ -7,7 +7,9 @@ class Remote:
         self.ip = ip
         self.port = port
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.socket.connect((ip,port))
+
+    def open_connection(self) -> None:
+        self.socket.connect((self.ip,self.port))
 
     def close_connection(self) -> None:
         self.socket.close()

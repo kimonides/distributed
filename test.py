@@ -13,7 +13,8 @@ from remote import Remote
 conn = Remote('192.168.1.5',42069)
 msg = input('Message to send:\n')
 # msg = 'join:192.168.1.1,42069\n192.168.1.5\n42069'
-msg = msg + '\n192.168.1.5\n42069'
+if(msg != 'ping'):
+    msg = msg + '\n192.168.1.5\n42069'
 print(repr('Sending %s' % msg))
 conn.send(msg)
 conn.receive()

@@ -16,8 +16,10 @@ class Server:
         self.id = int(self.hash, 16) % ringSize
         self.requestsTable = {}
         self.event = asyncio.Event()
-
-        print('Starting to listen')
+        self.event.clear()
+        self.condition = asyncio.Condition()
+        #ssh -i ~/.ssh/okeanos user@83.212.74.32
+        print('%s with id %s starting to listen' % (self.ip,self.id))
         self.listen()
 
     def isResponseNode(self,request):
@@ -46,16 +48,9 @@ class Server:
                     response = self.node.query(request)
                 elif(request.split(':')[0] == 'response'):
                     self.requestsTable[request.split(':')[1].split(',')[0]] = request.split(':')[1].split(',')[1]
-                    for k in self.requestsTable:
-                        print(k)
-                    print('Setting Event')
                     self.event.set()
-                    # self.event.clear()
-                # if(self.isResponseNode(request) and response == None):
-                #     response = uuid4()
+                    self.event.clear()
         return response
-
-    ## TODO MAKE EVENT WAIT FOR RESPONSES
 
 
     def listen(self) -> None:
@@ -68,19 +63,14 @@ class Server:
             if(isinstance(response,UUID)):
                 print('Waiting for response for request id %s' % response)
                 while True:
-                    # print('Started waiting!')
-                    self.event.wait()
-                    # print('unblocked!!!')
-                    if response in self.requestsTable:
-                        response = self.requestsTable[response]
-                        writer.writer(response.encode())
+                    await self.event.wait()
+                    if str(response) in self.requestsTable:
+                        response = self.requestsTable.pop(str(response))
+                        writer.write(response.encode())
                         break
             elif(response is not None):
                 writer.write(response.encode())
-            #Somewhere here it should do asyncio.event.wait() until we get the data it needs only
-            #if this node is the responseNode
             await writer.drain()
-            print("Close the client socket")
             writer.close()
 
 

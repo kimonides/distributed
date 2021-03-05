@@ -39,7 +39,17 @@ class Node:
         if(len(request.split('\n'))<4):
             requestID = uuid4()
             request+='\n%s' % requestID
+        print('Sending %s to %s' % (request,self.next.ip))
         self.next.connection.send(request)
+        return requestID
+
+    def sendToPrevious(self,request):
+        requestID = None
+        if(len(request.split('\n'))<4):
+            requestID = uuid4()
+            request+='\n%s' % requestID
+        print('Sending %s to %s' % (request,self.next.ip))
+        self.previous.connection.send(request)
         return requestID
     
     def parseRequest(self,request):
@@ -70,7 +80,7 @@ class Node:
             return response
         requestID = request.split('\n')[3]
         conn = Remote(responseNodeIP,responseNodePort)
-        conn.send('response: %s,%s' % (requestID,response))
+        conn.send('response:%s,%s' % (requestID,response))
         conn.close_connection()
         return None
 
@@ -86,7 +96,7 @@ class Node:
     def isResponsible(self, id) -> bool:
         rv = False
         if(self.id < self.previous.id):
-            if(0 <= id <= self.id or self.previous < id < ringSize - 1):
+            if(0 <= id <= self.id or self.previous.id < id < ringSize - 1):
                 rv = True
         else:
             if(self.previous.id < id <= self.id):
@@ -95,15 +105,16 @@ class Node:
 
     def insert(self, request):
         requestData = self.parseRequest(request)
-        if(self.isResponsible(hash(requestData['key']))):
+        if(self.isResponsible(self.hash(requestData['key']))):
             self.data[requestData['key']] = requestData['value']
             return self.sendResponse(request,'OK')
         else:
-            return self.sendToNext(request)
+            print("I'm not responsible for id %s send to previous with ip %s" % (self.hash(requestData['key']),self.previous.ip))
+            return self.sendToPrevious(request)
 
     def delete(self,request):
         requestData = self.parseRequest(request)
-        if(self.isResponsible(hash(requestData['key']))):
+        if(self.isResponsible(self.hash(requestData['key']))):
             self.data.pop(requestData['key'])
             return self.sendResponse(requestData,'OK')
         else:
@@ -128,7 +139,7 @@ class Node:
 
     def query(self,request):
         requestData = self.parseRequest(request)
-        if(self.isResponsible(hash(requestData['key']))):
+        if(self.isResponsible(self.hash(requestData['key']))):
             return self.sendResponse(request,self.data[requestData['key']])
         else:
             return self.sendToNext(request)
@@ -161,12 +172,14 @@ class Node:
         print('Added %s as next' % ip)
 
     def setPrevious(self, ip, port=42069) -> None:
+        if(self.previous is not self):
+            self.previous.connection.close_connection()
         self.previous = Node(ip, port)
         self.previous.connection = Remote(self.previous.ip, self.previous.port)
         print('Added %s as previous' % ip)
 
     def __str__(self) -> None:
-        return "I'm node with ip=%s\nPrevious node has ip:%s\nNext node has ip:%s" % (self.ip, self.previous.ip, self.next.ip)
+        return "(%s,%s,%s)-->" % (self.ip, self.port, self.id)
 
     def ping(self) -> None:
         print(str(self))
