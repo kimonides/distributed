@@ -1,7 +1,8 @@
 import socket
 
 
-ip = input('IP: ')
+# ip = input('IP: ')
+ip = '192.168.1.5'
 msg = input('Message to send:\n')
 msg = msg + '\n192.168.1.5\n42069'
 print(repr('Sending %s' % msg))

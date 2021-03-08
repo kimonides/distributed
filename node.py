@@ -75,14 +75,19 @@ class Node:
         rv['command'] = request.split(':')[0]
         if(rv['command'] == 'insert'):
             rv['key'] = request.split('\n')[0].split(':')[1].split(',')[0]
+            rv['key_hash'] = self.hash(rv['key'])
             rv['value'] = request.split('\n')[0].split(':')[1].split(',')[1]
         elif(rv['command'] == 'join'):
             rv['ip'] = request.split('\n')[0].split(':')[1].split(',')[0]
             rv['port'] = request.split('\n')[0].split(':')[1].split(',')[1]
         elif(rv['command'] == 'depart'):
-            rv['id'] = request.split('\n')[0].split(':')[1]
+            rv['id'] = int(request.split('\n')[0].split(':')[1])
         elif(rv['command'] == 'delete' or rv['command'] == 'query'):
-            rv['key'] = request.split('\n')[0].split(':')[1]
+            rv['key'] = request.split('\n')[0].split(':')[1].split(',')[0]
+            if(rv['key'] != '*'):
+                rv['key_hash'] = self.hash(rv['key'])
+            else:
+                rv['running_response'] = request.split('\n')[0].split(':')[1].split(',')[1]
         return rv
 
     def sendResponse(self,request,response):
@@ -90,7 +95,10 @@ class Node:
         responseNodePort = int(request.split('\n')[2])
         if(self.ip == responseNodeIP and self.port == responseNodePort):
             return response
-        requestID = request.split('\n')[3]
+        try:
+            requestID = request.split('\n')[3]
+        except:
+            return None
         conn = Remote(responseNodeIP,responseNodePort)
         conn.send('response:%s,%s' % (requestID,response))
         return None
@@ -98,55 +106,78 @@ class Node:
     def hash(self,key):
         return int(hashlib.sha1((key).encode()).hexdigest(), 16) % ringSize
 
-    def isResponsible(self, id) -> bool:
-        rv = False
-        if(self.id < self.previous.id):
-            if(0 <= id <= self.id or self.previous.id < id < ringSize - 1):
-                rv = True
-        else:
-            if(self.previous.id < id <= self.id):
-                rv = True
-        return rv
+    def redistribute(self,request) -> None:
+        key_hash = int(request.split(':')[1].split(',')[0])
+        value = request.split(':')[1].split(',')[1]
+        self.data[key_hash] = value
 
     def insert(self, request):
         requestData = self.parseRequest(request)
-        if(self.isResponsible(self.hash(requestData['key']))):
-            self.data[requestData['key']] = requestData['value']
-            print("I'm responsible for insert:%s,%s with hash key %s" % (requestData['value'],requestData['key'],self.hash(requestData['key'])))
+        if(self.isResponsible(requestData['key_hash'])):
+            self.data[requestData['key_hash']] = requestData['value']
+            print("I'm responsible for insert:%s,%s with hash key %s" % (requestData['key'],requestData['value'],requestData['key_hash']))
             return self.sendResponse(request,'OK')
         else:
-            print("I'm not responsible for id %s send to previous with ip %s" % (self.hash(requestData['key']),self.previous.ip))
+            print("I'm not responsible for id %s send to previous with ip %s" % (requestData['key_hash'],self.previous.ip))
             return self.sendToPrevious(request)
 
     def delete(self,request):
         requestData = self.parseRequest(request)
-        if(self.isResponsible(self.hash(requestData['key']))):
-            self.data.pop(requestData['key'])
-            return self.sendResponse(requestData,'OK')
-        else:
-            return self.sendToNext(request)
-
-    def redistributeData(self, targetNode) -> None:
-        for key in self.data:
-            key_hash = self.hash(key)
-            if(not self.isResponsible(key_hash)):
-                value = self.data.pop(key)
-                targetNode.connection.send('insert:%s,%s' % (key, value))
-
-    def depart(self, request):
-        requestData = self.parseRequest(request)
-        if(requestData['id'] == self.id):
-            self.previous.connection('next:%s,%s|' % (self.next.ip, self.next.port))
-            self.next.connection('prev:%s,%s|' % (self.previous.ip, self.previous.port))
-            self.redistributeData(self.next)
+        if(self.isResponsible(requestData['key_hash'])):
+            self.data.pop(requestData['key_hash'])
             return self.sendResponse(request,'OK')
         else:
             return self.sendToNext(request)
 
+    def isResponsible(self, hash) -> bool:
+        rv = False
+        if(self.next is self):
+            return True
+        if(self.id < self.previous.id):
+            if(0 <= hash <= self.id or self.previous.id < hash < ringSize):
+                rv = True
+        else:
+            if(self.previous.id < hash <= self.id):
+                rv = True
+        return rv
+
+    def redistributeData(self, targetNode, force=False) -> None:
+        print('Redistributing data to %s with id %s' % (targetNode.ip,targetNode.id))
+        for key in list(self.data):
+            if(not self.isResponsible(key) or force == True):
+                value = self.data.pop(key)
+                print('Sending key hash %s' % (key))
+                targetNode.connection.send('redistribute:%s,%s' % (key, value))
+
+    def depart(self, request):
+        requestData = self.parseRequest(request)
+        if(requestData['id'] == self.id):
+            self.previous.connection.send('next:%s,%s|' % (self.next.ip, self.next.port))
+            self.next.connection.send('prev:%s,%s|' % (self.previous.ip, self.previous.port))
+            self.redistributeData(self.next,force=True)
+            return self.sendResponse(request,'OK')
+        else:
+            return self.sendToNext(request)
+
+
+
     def query(self,request):
         requestData = self.parseRequest(request)
-        if(self.isResponsible(self.hash(requestData['key']))):
-            return self.sendResponse(request,self.data[requestData['key']])
+        if(requestData['key']=='*'):
+            myData = ''
+            for key in self.data:
+                myData += '?' + self.data[key]
+            request = request.split('\n')[0]+ myData + '\n' + '\n'.join(request.split('\n')[1:])
+            #TODO fix someway for query * to work
+            if( requestData[''] )
+            return self.sendToNext(request)
+
+        if(self.isResponsible(requestData['key_hash'])):
+            if requestData['key_hash'] in self.data:
+                resp = 'Query result is %s from %s with id %s' % (self.data[requestData['key_hash']],self.ip,self.id)
+                return self.sendResponse(request,resp)
+            else:
+                return self.sendResponse(request,"Key %s doesn't exist in the DHT" % requestData['key'])
         else:
             return self.sendToNext(request)
 
@@ -171,13 +202,19 @@ class Node:
             return self.sendToNext(request)
 
     def setNext(self, ip, port=42069) -> None:
-        self.next = Node(ip, port)
-        self.next.connection = Remote(self.next.ip, self.next.port)
+        if(ip==self.ip and int(port)==self.port):
+            self.next = self
+        else:
+            self.next = Node(ip, port)
+            self.next.connection = Remote(self.next.ip, self.next.port)
         print('Added %s as next' % ip)
 
     def setPrevious(self, ip, port=42069) -> None:
-        self.previous = Node(ip, port)
-        self.previous.connection = Remote(self.previous.ip, self.previous.port)
+        if(ip==self.ip and int(port)==self.port):
+            self.previous = self
+        else:
+            self.previous = Node(ip, port)
+            self.previous.connection = Remote(self.previous.ip, self.previous.port)
         print('Added %s as previous' % ip)
 
     def __str__(self) -> None:

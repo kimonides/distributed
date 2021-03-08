@@ -33,6 +33,8 @@ class Server:
                 self.node.setNext(request.split(':')[1].split(',')[0],request.split(':')[1].split(',')[1])
             elif(command == 'prev'):
                 self.node.setPrevious(request.split(':')[1].split(',')[0],request.split(':')[1].split(',')[1])
+            if(command == 'redistribute'):
+                self.node.redistribute(request)
             else:
                 if(command == 'join'):
                     response = self.node.join(request)
