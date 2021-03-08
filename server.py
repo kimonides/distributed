@@ -1,8 +1,8 @@
 import hashlib
 import asyncio
-import threading
 from uuid import uuid4
 from uuid import UUID
+import json
 
 ringSize = 10
 
@@ -17,41 +17,39 @@ class Server:
         self.requestsTable = {}
         self.event = asyncio.Event()
         self.event.clear()
-        self.condition = asyncio.Condition()
-        #ssh -i ~/.ssh/okeanos user@83.212.74.32
         print('%s with id %s starting to listen' % (self.ip,self.id))
         self.listen()
 
     def isResponseNode(self,request):
         return request.split('\n')[1] == self.ip and request.split('\n')[2] == self.port
 
-    def handle_request(self, requests):
+    def handle_request(self, request):
         response = None
-        for request in requests.split('|'):
-            command = request.split(':')[0]
-            if(command == 'next'):
-                self.node.setNext(request.split(':')[1].split(',')[0],request.split(':')[1].split(',')[1])
-            elif(command == 'prev'):
-                self.node.setPrevious(request.split(':')[1].split(',')[0],request.split(':')[1].split(',')[1])
-            if(command == 'redistribute'):
-                self.node.redistribute(request)
-            else:
-                if(command == 'join'):
-                    response = self.node.join(request)
-                elif(command == 'depart'):
-                    response = self.node.depart(request)
-                elif(command == 'insert'):
-                    response = self.node.insert(request)
-                elif(command == 'ping'):
-                    response = self.node.ping(request)
-                elif(command == 'delete'):
-                    response = self.node.delete(request)
-                elif(command == 'query'):
-                    response = self.node.query(request)
-                elif(request.split(':')[0] == 'response'):
-                    self.requestsTable[request.split(':')[1].split(',')[0]] = ','.join(request.split(':')[1].split(',')[1:])
-                    self.event.set()
-                    self.event.clear()
+        request = json.loads(request)
+        command = request['type']
+        if(command == 'next'):
+            self.node.setNext(request['ip'],request['port'])
+        elif(command == 'prev'):
+            self.node.setPrevious(request['ip'],request['port'])
+        if(command == 'redistribute'):
+            self.node.redistribute(request)
+        elif(command == 'join'):
+            response = self.node.join(request)
+        elif(command == 'depart'):
+            response = self.node.depart(request)
+        elif(command == 'insert'):
+            response = self.node.insert(request)
+        elif(command == 'ping'):
+            response = self.node.ping(request)
+        elif(command == 'delete'):
+            response = self.node.delete(request)
+        elif(command == 'query'):
+            response = self.node.query(request)
+        elif(command == 'response'):
+            requestID = request['requestID']
+            self.requestsTable[requestID] = request['response']
+            self.event.set()
+            self.event.clear()
         return response
 
 
@@ -85,5 +83,9 @@ class Server:
 #   response: requestID,result
 #
 #   requests
-#   insert:key,value\nResponseNodeIP\nResponseNodePort\nrequestID
+#
+#   insert:key,value
+#   ResponseNodeIP
+#   ResponseNodePort
+#   requestID
 #   
