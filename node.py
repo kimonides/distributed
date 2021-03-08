@@ -74,8 +74,7 @@ class Node:
             pass
         rv['command'] = request.split(':')[0]
         if(rv['command'] == 'insert'):
-            rv['key'] = request.split('\n')[0].split(':')[1].split(',')[0]
-            rv['key_hash'] = self.hash(rv['key'])
+            rv['key'] = int(request.split('\n')[0].split(':')[1].split(',')[0])
             rv['value'] = request.split('\n')[0].split(':')[1].split(',')[1]
         elif(rv['command'] == 'join'):
             rv['ip'] = request.split('\n')[0].split(':')[1].split(',')[0]
@@ -83,10 +82,8 @@ class Node:
         elif(rv['command'] == 'depart'):
             rv['id'] = int(request.split('\n')[0].split(':')[1])
         elif(rv['command'] == 'delete' or rv['command'] == 'query'):
-            rv['key'] = request.split('\n')[0].split(':')[1].split(',')[0]
-            if(rv['key'] != '*'):
-                rv['key_hash'] = self.hash(rv['key'])
-            else:
+            rv['key'] = int(request.split('\n')[0].split(':')[1].split(',')[0])
+            if(rv['key'] == '*'):
                 rv['running_response'] = request.split('\n')[0].split(':')[1].split(',')[1]
         return rv
 
@@ -113,18 +110,18 @@ class Node:
 
     def insert(self, request):
         requestData = self.parseRequest(request)
-        if(self.isResponsible(requestData['key_hash'])):
-            self.data[requestData['key_hash']] = requestData['value']
-            print("I'm responsible for insert:%s,%s with hash key %s" % (requestData['key'],requestData['value'],requestData['key_hash']))
+        if(self.isResponsible(requestData['key'])):
+            self.data[requestData['key']] = requestData['value']
+            print("I'm responsible for insert with hash key %s and value %s" % (requestData['key'],requestData['value']))
             return self.sendResponse(request,'OK')
         else:
-            print("I'm not responsible for id %s send to previous with ip %s" % (requestData['key_hash'],self.previous.ip))
+            print("I'm not responsible for id %s send to previous with ip %s" % (requestData['key'],self.previous.ip))
             return self.sendToPrevious(request)
 
     def delete(self,request):
         requestData = self.parseRequest(request)
-        if(self.isResponsible(requestData['key_hash'])):
-            self.data.pop(requestData['key_hash'])
+        if(self.isResponsible(requestData['key'])):
+            self.data.pop(requestData['key'])
             return self.sendResponse(request,'OK')
         else:
             return self.sendToNext(request)
@@ -163,21 +160,21 @@ class Node:
 
     def query(self,request):
         requestData = self.parseRequest(request)
-        if(requestData['key']=='*'):
-            myData = ''
-            for key in self.data:
-                myData += '?' + self.data[key]
-            request = request.split('\n')[0]+ myData + '\n' + '\n'.join(request.split('\n')[1:])
-            #TODO fix someway for query * to work
-            if( requestData[''] )
-            return self.sendToNext(request)
+        # if(requestData['key']=='*'):
+        #     myData = ''
+        #     for key in self.data:
+        #         myData += '?' + self.data[key]
+        #     request = request.split('\n')[0]+ myData + '\n' + '\n'.join(request.split('\n')[1:])
+        #     #TODO fix someway for query * to work
+        #     if( requestData[''] )
+        #     return self.sendToNext(request)
 
-        if(self.isResponsible(requestData['key_hash'])):
-            if requestData['key_hash'] in self.data:
-                resp = 'Query result is %s from %s with id %s' % (self.data[requestData['key_hash']],self.ip,self.id)
+        if(self.isResponsible(requestData['key'])):
+            if requestData['key'] in self.data:
+                resp = 'Query result is %s from %s with id %s' % (self.data[requestData['key']],self.ip,self.id)
                 return self.sendResponse(request,resp)
             else:
-                return self.sendResponse(request,"Key %s doesn't exist in the DHT" % requestData['key'])
+                return self.sendResponse(request,"Key hash %s doesn't exist in the DHT" % requestData['key'])
         else:
             return self.sendToNext(request)
 
